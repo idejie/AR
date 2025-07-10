@@ -1,4 +1,4 @@
-# AR-VLA: Imitating Human Motions for Visual Robot Manipulation with Analogical Reasoning
+# AR-VRM: Imitating Human Motions for Visual Robot Manipulation with Analogical Reasoning
 > By Dejie Yang, Zijing Zhao, Yang Liu $^*$
 >
 > Accepted By ICCV 2025
@@ -79,7 +79,7 @@ If you find our paper or project useful, please cite our work by the following B
 
 ```
 @inproceedings{yang2025ar,
-  title={AR-VLA: Imitating Human Motions for Visual Robot Manipulation with Analogical Reasoning},
+  title={AR-VRM: Imitating Human Motions for Visual Robot Manipulation with Analogical Reasoning},
   author={Dejie Yang,  Zijing  Zhao, Yang Liu},
   booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
   year={2025}
