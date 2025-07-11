@@ -150,15 +150,21 @@ class AR(nn.Module):
             hidden_size), requires_grad=False)  # (1, n_patch, h)
         decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], (self.image_size//self.patch_size))
         self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
+        decoder_layer = nn.TransformerDecoderLayer(d_model=384, nhead=8, batch_first=True)
+        self.ar_matrix = nn.TransformerDecoder(decoder_layer, num_layers=2)
+        self.ar_matrix_norm = nn.LayerNorm(384)
 
     def forward(self, 
                 rgb, 
                 hand_rgb, 
                 state, 
                 language, 
-                attention_mask
+                attention_mask,
+                human_vision_embedding=None,
+                human_lang_emebdding=None,
+                human_motion=None,
+                k=10
     ):
-        import pdb; pdb.set_trace()
         obs_preds = None
         obs_hand_preds = None
         obs_targets = None
@@ -185,6 +191,9 @@ class AR(nn.Module):
         lang_embeddings = lang_embeddings / (lang_embeddings.norm(dim=1, keepdim=True) + 1e-6) # normalization 
         # B,512 | Linear(512,384)
         lang_embeddings = self.embed_lang(lang_embeddings.float())  # (b, h)
+        # retrieval top-K human motion with lang_embeddings+state_embeddings
+        
+                
 
         # Get obs and patch feature from MAE
         # B*chunk_size, 768;B*chunk_size, 196, 768 
@@ -192,6 +201,28 @@ class AR(nn.Module):
             rgb.view(batch_size*sequence_length, c, h, w))  # (b * t, img_feat_dim), (b * t, n_patches, patch_feat_dim)
         # B, chunk_size, 768
         obs_embeddings = obs_embeddings.view(batch_size, sequence_length, -1)  # (b, t, img_feat_dim)
+        if human_vision_embedding is not None:
+            # query:B, dim
+            with torch.no_grad():
+                # retrieval top-K human motion
+                # human_motion: N, dim
+                # sim: B, N
+                query = obs_embeddings.mean(dim=1)
+                v_sim = torch.matmul(query, human_vision_embedding.T)
+            if human_lang_emebdding is not None:
+                # query:B, dim
+                with torch.no_grad():
+                    # retrieval top-K human motion
+                    # human_motion: N, dim
+                    # sim: B, N
+                    l_sim = torch.matmul(lang_embeddings, human_lang_emebdding.T)
+        if human_motion is not None and human_vision_embedding is not None:
+            sim = v_sim
+            if human_lang_emebdding is not None:
+                sim = sim + l_sim
+            _, topk_indices = torch.topk(sim, k=k, dim=1)
+            human_motion = human_motion[topk_indices]
+            human_motion = human_motion.view(batch_size, k, -1)
         if self.use_hand_rgb:
             # B*chunk_size, 768;B*chunk_size, 196, 768
             hand_obs_embeddings, hand_patch_embeddings = self.model_mae(
@@ -342,7 +373,23 @@ class AR(nn.Module):
                 action_embedding = pred_act_mlp(action_embedding)
             arm_action_preds = self.pred_arm_act(action_embedding)  # (b, t, chunk_size, act_dim - 1)
             gripper_action_preds = self.pred_gripper_act(action_embedding)  # (b, t, chunk_size, 1)
+        if human_motion is not None:
             
+            # memory: ahuman motion
+            memory = human_motion
+            memory = memory.view(batch_size, sequence_length, 1, self.hidden_size)
+            # query token:  arm+gripper
+            query = torch.cat((gripper_state, arm_state), dim=2)
+            query = query.view(batch_size, sequence_length, 1, self.hidden_size)
+            # ar matrix
+            ar_pred = self.ar_matrix(query, memory)
+            # split  ar_pred to arm + gripper
+            arm_action_preds = ar_pred[:, :, 1:, :]
+            gripper_action_preds = ar_pred[:, :, :1, :]
+            arm_action_preds = self.pred_arm_act(arm_action_preds)
+            gripper_action_preds = self.pred_gripper_act(gripper_action_preds)
+            arm_action_preds = arm_action_preds.view(batch_size, sequence_length, self.act_dim-1)
+            gripper_action_preds = gripper_action_preds.view(batch_size, sequence_length, 1)
         # Forward prediction
         if self.fwd_pred:
             mask_token = self.mask_token  # (1, 1, 1, h)
@@ -369,7 +416,7 @@ class AR(nn.Module):
                 obs_hand_preds = self.decoder_pred(obs_pred_hand_)
                 obs_hand_preds = obs_hand_preds.reshape(batch_size, sequence_length, -1, obs_hand_preds.shape[-1])
                 obs_hand_preds = obs_hand_preds[:, :, (self.n_patch_latents+n_obs_tokens):]
-        
+       
         prediction = {
             'obs_preds': obs_preds,
             'obs_targets': obs_targets,

@@ -45,24 +45,6 @@ def masked_loss(pred, target, mask, skip_frame=0, loss_func=F.mse_loss):
     return loss
 
 def train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva, eval_dir, optimizer, scheduler, device, cfg, step, writer=None):
-    '''
-    prof = profile(
-        schedule = torch.profiler.schedule(
-            wait=20,
-            warmup=3,
-            active=4,
-            repeat=1,
-        ),
-        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-        on_trace_ready=tensorboard_trace_handler(cfg['save_path']+'prof'),
-        record_shapes=True,
-        profile_memory=True,
-        with_stack=True,
-        with_flops=True,
-        with_modules=True,
-    )
-    prof.start()
-    '''
 
     train_dataset_len = len(train_prefetcher.loader.dataset)
     test_dataset_len = len(test_prefetcher.loader.dataset)
@@ -74,12 +56,11 @@ def train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva,
             if epoch != 0:
                 acc.wait_for_everyone()
                 unwrapped_model = acc.unwrap_model(model)
-                modules_to_exclude = ['model_mae', 'model_clip']
                 if hasattr(unwrapped_model, '_orig_mod'):
-                    state_dict = {k: v for k, v in unwrapped_model._orig_mod.state_dict().items() if not any(module_name in k for module_name in modules_to_exclude)}
+                    state_dict = {k: v for k, v in unwrapped_model._orig_mod.state_dict().items()}
                 else:
-                    state_dict = {k: v for k, v in unwrapped_model.state_dict().items() if not any(module_name in k for module_name in modules_to_exclude)}
-                acc.save({'state_dict': state_dict}, cfg['save_path']+'GR1_{}.pth'.format(epoch+cfg['load_epoch']))
+                    state_dict = {k: v for k, v in unwrapped_model.state_dict().items()}
+                acc.save({'state_dict': state_dict}, cfg['save_path']+'AR_{}.pth'.format(epoch+cfg['load_epoch']))
 
             if cfg['evaluate_during_training'] and epoch != 0:
                 model.eval()
@@ -121,7 +102,6 @@ def train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva,
             with acc.accumulate(model):
                 model.train()
                 optimizer.zero_grad()
-                import pdb; pdb.set_trace()
                 # B, chunk_size, C,H,W,   B, chunk_size, C,H,W
                 rgb_static, rgb_gripper = preprocessor.rgb_process(batch['rgb_static'], batch['rgb_gripper'], train=True)
                 obs_mask = batch['mask'][..., 0] # B, chunk_size
@@ -223,11 +203,6 @@ def train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva,
             batch_idx += 1
             step += 1
             batch, load_time = train_prefetcher.next()
-            '''
-            prof.step()
-            if batch_idx == 28:
-                prof.stop()
-            '''
 
 if __name__ == '__main__':
     
@@ -241,7 +216,6 @@ if __name__ == '__main__':
         kwargs_handlers=[init_pg_kwargs, ddp_kwargs]
     )
     device = acc.device
-    import pdb; pdb.set_trace()
     preprocessor = PreProcess(
         cfg['rgb_static_pad'],
         cfg['rgb_gripper_pad'],
@@ -321,11 +295,11 @@ if __name__ == '__main__':
         resid_pdrop=cfg['dropout'],
         attn_pdrop=cfg['dropout'],
     ) .to(device)  # for fused optimizer
-    if cfg['load_bytedance_ckpt']:
-        missing_keys, unexpected_keys = model.load_state_dict(torch.load(cfg['bytedance_ckpt_path'])['state_dict'], strict=False)
-        acc.print('load ', cfg['bytedance_ckpt_path'], '\nmissing ', missing_keys, '\nunexpected ', unexpected_keys)
+    if cfg['pretrained_ckpt_path'] and len(cfg['pretrained_ckpt_path']) > 0:
+        missing_keys, unexpected_keys = model.load_state_dict(torch.load(cfg['pretrained_ckpt_path'])['state_dict'], strict=False)
+        acc.print('load ', cfg['pretrained_ckpt_path'], '\nmissing ', missing_keys, '\nunexpected ', unexpected_keys)
     elif os.path.isfile(cfg['save_path']+'AR_{}.pth'.format(cfg['load_epoch'])):
-        state_dict = torch.load(cfg['save_path']+'AR_{}.pth'.format(cfg['load_epoch']))['state_dict'] 
+        state_dict = torch.load(cfg['save_path']+'AR_{}.pth'.format(cfg['load_epoch']), map_location='cpu')['state_dict'] 
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
         acc.print('load ', cfg['save_path']+'AR_{}.pth'.format(cfg['load_epoch']), '\nmissing ', missing_keys, '\nunexpected ', unexpected_keys)
     if cfg['compile_model']:
@@ -359,8 +333,8 @@ if __name__ == '__main__':
         'actions': ['rel_actions'], 
         'language': ['language']}
     eval_dir = cfg['save_path']+f'eval{torch.cuda.current_device()}/'
-    os.makedirs(eval_dir, exist_ok=True)
     if cfg['evaluate_during_training']:
+        os.makedirs(eval_dir, exist_ok=True)
         from evaluate import make_env, evaluate_policy 
         from evaluation.calvin_evaluation import CalvinEvaluation 
         env = make_env('./fake_dataset', observation_space, device)
@@ -371,7 +345,10 @@ if __name__ == '__main__':
     # 只在主进程中创建SummaryWriter
     writer = None
     if acc.is_main_process:
-        writer = SummaryWriter(cfg['save_path'] + 'logs')
+        from datetime import datetime
+        current_time = datetime.now().strftime('%m-%d-%H-%M-%S')
+        log_dir = os.path.join(cfg['save_path'] + 'logs', current_time)
+        writer = SummaryWriter(log_dir)
 
     # Train
     train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva, eval_dir, optimizer, scheduler, device, cfg, step, writer)
