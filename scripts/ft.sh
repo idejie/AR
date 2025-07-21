@@ -1,0 +1,1 @@
+accelerate launch --config_file configs/multiple.yaml train.py

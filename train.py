@@ -21,6 +21,7 @@ import models.ar.vision_transformer as vits
 from models.ar.modeling_ar import AR
 from loguru import logger
 from utils import parser
+import argparse
 
 def AsyncStep(self, closure=None):
     if self.gradient_state.sync_gradients:
@@ -48,7 +49,7 @@ def train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva,
 
     train_dataset_len = len(train_prefetcher.loader.dataset)
     test_dataset_len = len(test_prefetcher.loader.dataset)
-    eval_steps = train_dataset_len // test_dataset_len
+    eval_steps = 10
     avg_reward = 0.0
     for epoch in range(cfg['num_epochs']):
         if epoch % cfg['save_epochs'] == 0:
@@ -205,9 +206,10 @@ def train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva,
             batch, load_time = train_prefetcher.next()
 
 if __name__ == '__main__':
-    
-    # Preparation
-    cfg = json.load(open('configs/configs.json'))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, default='configs/configs.json')
+    args = parser.parse_args()
+    cfg = json.load(open(args.config))
     # The timeout here is 3600s to wait for other processes to finish the simulation
     init_pg_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=3600))
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
@@ -232,7 +234,11 @@ if __name__ == '__main__':
         cfg['act_dim'],
         start_ratio = 0,
         end_ratio = 0.9, 
+        unseen_train = cfg['unseen_train'],
     )
+    if cfg['ten_percent_train']:
+        # 随机取10%的train_dataset
+        _, train_dataset = random_split(train_dataset, [0.9, 0.1])
     test_dataset = LMDBdst_jpeg(
         cfg['LMDB_path'], 
         cfg['seq_len'], 
@@ -262,6 +268,7 @@ if __name__ == '__main__':
     ) 
     model_clip, _ = clip.load(cfg['clip_backbone'], device=device) 
     model_mae = vits.__dict__['vit_base'](patch_size=16, num_classes=0).to(device)
+    
     checkpoint = torch.load(cfg['mae_ckpt'])
     model_mae.load_state_dict(checkpoint['model'], strict=False)
     model = AR(
@@ -294,11 +301,13 @@ if __name__ == '__main__':
         n_positions=cfg['n_positions'],
         resid_pdrop=cfg['dropout'],
         attn_pdrop=cfg['dropout'],
+        frozen_visual=cfg['frozen_visual'],
+        frozen_text=cfg['frozen_text'],
     ) .to(device)  # for fused optimizer
     if cfg['pretrained_ckpt_path'] and len(cfg['pretrained_ckpt_path']) > 0:
         missing_keys, unexpected_keys = model.load_state_dict(torch.load(cfg['pretrained_ckpt_path'])['state_dict'], strict=False)
         acc.print('load ', cfg['pretrained_ckpt_path'], '\nmissing ', missing_keys, '\nunexpected ', unexpected_keys)
-    elif os.path.isfile(cfg['save_path']+'AR_{}.pth'.format(cfg['load_epoch'])):
+    if os.path.isfile(cfg['save_path']+'AR_{}.pth'.format(cfg['load_epoch'])):
         state_dict = torch.load(cfg['save_path']+'AR_{}.pth'.format(cfg['load_epoch']), map_location='cpu')['state_dict'] 
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
         acc.print('load ', cfg['save_path']+'AR_{}.pth'.format(cfg['load_epoch']), '\nmissing ', missing_keys, '\nunexpected ', unexpected_keys)

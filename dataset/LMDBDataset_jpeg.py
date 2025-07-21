@@ -8,6 +8,8 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.io import decode_jpeg
 import clip
+import json
+import random
 
 ORIGINAL_STATIC_RES = 200
 ORIGINAL_GRIPPER_RES = 84
@@ -49,7 +51,7 @@ class DataPrefetcher():
         return batch, time
 
 class LMDBDataset(Dataset):
-    def __init__(self, lmdb_dir, sequence_length, chunk_size, action_mode, action_dim, start_ratio, end_ratio):
+    def __init__(self, lmdb_dir, sequence_length, chunk_size, action_mode, action_dim, start_ratio, end_ratio, unseen_train=False):
         super(LMDBDataset).__init__()
         self.sequence_length = sequence_length
         self.chunk_size = chunk_size
@@ -68,6 +70,10 @@ class LMDBDataset(Dataset):
             self.start_step = int(dataset_len * start_ratio) 
             self.end_step = int(dataset_len * end_ratio) - sequence_length - chunk_size
         env.close()
+        self.unseen_train = unseen_train
+        if unseen_train:
+            with open('data/task_unseen/unseen_train.json', 'r') as f:
+                self.unseen_inst_str = json.load(f)
 
     def open_lmdb(self):
         self.env = lmdb.open(self.lmdb_dir, readonly=True, create=False, lock=False)
@@ -90,9 +96,13 @@ class LMDBDataset(Dataset):
             inst_token = loads(self.txn.get(f'inst_token_{cur_episode}'.encode()))
         except:
             inst_token = None
-        if inst_token is None:
+        if inst_token is None or self.unseen_train:
             # clip tokenize
             inst_str = loads(self.txn.get(f'inst_{cur_episode}'.encode()))
+            if self.unseen_train:
+                # use rewrite the instruction
+                cand_inst_str_list = self.unseen_inst_str[inst_str]
+                inst_str = random.choice(cand_inst_str_list)
             inst_token = clip.tokenize(inst_str)[0]
         for i in range(self.sequence_length):
             if loads(self.txn.get(f'cur_episode_{idx+i}'.encode())) == cur_episode:

@@ -1,0 +1,1 @@
+accelerate launch --config_file configs/multiple.yaml --main_process_port 0 evaluate.py
