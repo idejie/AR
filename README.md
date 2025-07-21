@@ -69,10 +69,10 @@ bash ./scripts/eval.sh  ./configs/ABC_DP.json
 ## 6. Results and Checkpoints
 
 
-| Task Setting| Policy | Avg Len. |  Checkpoints     |
-| -------- | -------------- | -------------- |-------------- |
-| ABCD-D | DP|            |       [ABCD_DP]()        | 
-| ABC-D | DP|          |          [ABC_DP]()         | 
+| Task Setting| Policy | Avg Len. |Avg Len. |  Checkpoints     |
+| -------- | -------------- | -------------- | -------------- |-------------- |
+| ABCD-D | DP|      4.34      |  86.75% |    [ABCD_DP]()        | 
+| ABC-D | DP|     3.29     |     65.80%  |   [ABC_DP]()         | 
 
 ## 7. Citation
 If you find our paper or project useful, please cite our work by the following BibTeX:
