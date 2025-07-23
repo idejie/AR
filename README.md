@@ -75,6 +75,7 @@ $ sh install.sh
 
 ## 6. Results and Checkpoints
 
+- path_config: reference to `configs`
 
 - vit-base: [BaiduYun](https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)
 
