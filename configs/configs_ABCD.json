@@ -12,6 +12,7 @@
   "frozen_visual": true,
   "frozen_text": true,
   "ep_len": 360,
+  "novel": false,
   "print_steps": 100,
   "lr_max": 1e-4,
   "weight_decay": 0.0001,

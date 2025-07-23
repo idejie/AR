@@ -300,6 +300,7 @@ if __name__ == '__main__':
         attn_pdrop=cfg['dropout'],
         frozen_visual=cfg['frozen_visual'],
         frozen_text=cfg['frozen_text'],
+        novel=cfg['novel'],
     ) .to(device)  # for fused optimizer
     if cfg['pretrained_ckpt_path'] and len(cfg['pretrained_ckpt_path']) > 0:
         missing_keys, unexpected_keys = model.load_state_dict(torch.load(cfg['pretrained_ckpt_path'])['state_dict'], strict=False)

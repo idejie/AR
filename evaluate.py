@@ -229,6 +229,7 @@ def main():
         n_positions=cfg['n_positions'],
         resid_pdrop=cfg['dropout'],
         attn_pdrop=cfg['dropout'],
+        novel=cfg['novel'],
     ).to(device)  # for fused optimizer
     if cfg['pretrained_ckpt_path'] and len(cfg['pretrained_ckpt_path']) > 0:
         model.load_state_dict(torch.load(cfg['pretrained_ckpt_path'], map_location='cpu')['state_dict'], strict=False)
