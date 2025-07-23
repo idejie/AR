@@ -490,7 +490,11 @@ class AR(nn.Module):
                 k=10
     ):
         if self.novel:
-            return self.forward_novel(rgb, hand_rgb, state, language, attention_mask, human_vision_embedding, human_lang_emebdding, human_motion, k)
+            return self.forward_novel(rgb, 
+                hand_rgb, 
+                state, 
+                language, 
+                attention_mask)
         obs_preds = None
         obs_hand_preds = None
         obs_targets = None
