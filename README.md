@@ -14,8 +14,8 @@ Download and unzip the [CALVIN](https://github.com/mees/calvin) dataset.
 $ git clone --recurse-submodules https://github.com/mees/calvin.git
 $ export CALVIN_ROOT=$(pwd)/calvin
 $ cd $CALVIN_ROOT/dataset
-$ sh download_data.sh  <ABC or ABCD> 
-$ python data/calvin2lmdb.py --input_dir <dir> # Note that modify dir for: ABC or ABCD 
+$ sh download_data.sh ABC
+$ python data/calvin2lmdb.py --input_dir <dir> 
 ```
 
 ### 2.1 Pre-Processed Data
@@ -56,8 +56,6 @@ $ sh install.sh
  accelerate launch --config_file configs/multiple.yaml --main_process_port 0 train.py --config configs/configs_ABC.json
 
 
-# for setting ABCD-D
- accelerate launch --config_file configs/multiple.yaml --main_process_port 0 train.py --config configs/configs_ABCD.json
 
 ```
 
@@ -67,8 +65,6 @@ $ sh install.sh
 ```bash
 # for setting ABC-D
  accelerate launch --config_file configs/multiple.yaml --main_process_port 0 evaluate.py --config configs/configs_ABC.json
-# for setting ABCD-D
- accelerate launch --config_file configs/multiple.yaml --main_process_port 0 evaluate.py --config configs/configs_ABCD.json
 
 ```
 
@@ -83,7 +79,6 @@ $ sh install.sh
 | Task Setting|  Avg Len. |  Checkpoints     |
 | -------- |  -------------- |-------------- |
 | ABC-D |     3.29     |     [ABC_ckpts]( https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)         | 
-| ABCD-D |      4.34      |  [ABCD_ckpts]( https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)        | 
 
 
 ## 7. Citation
