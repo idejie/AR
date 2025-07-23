@@ -78,8 +78,9 @@ $ sh install.sh
 
 - vit-base: [BaiduYun](https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)
 
+
 | Task Setting|  Avg Len. |  Checkpoints     |
-| -------- |  -------------- | -------------- |-------------- |
+| -------- |  -------------- |-------------- |
 | ABC-D |     3.29     |     [ABC_ckpts]( https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)         | 
 | ABCD-D |      4.34      |  [ABCD_ckpts]( https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)        | 
 
