@@ -198,7 +198,7 @@ class AR(nn.Module):
             self.fwd_pred = True
         if 'fwd_pred_hand' in training_target:
             self.fwd_pred_hand = True
-        if self.novel:
+        if not self.novel:
             self.dinov2_vitb14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
             # freeze dinov2_vitb14
             for param in self.dinov2_vitb14.parameters():
