@@ -18,7 +18,7 @@
   "weight_decay": 0.0001,
   "arm_loss_ratio": 100,
   "num_warmup_epochs": 1,
-  "bs_per_gpu": 20,
+  "bs_per_gpu": 40,
   "workers_per_gpu": 16,
   "prefetch_factor": 2,
   "gradient_accumulation_steps": 5,

@@ -16,7 +16,7 @@
   "num_warmup_epochs": 1,
   "frozen_visual": true,
   "frozen_text": true,
-  "bs_per_gpu": 20,
+  "bs_per_gpu": 40,
   "workers_per_gpu": 16,
   "prefetch_factor": 2,
   "gradient_accumulation_steps": 5,

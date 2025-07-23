@@ -273,6 +273,7 @@ class AR(nn.Module):
                 language, 
                 attention_mask
     ):
+        import pdb; pdb.set_trace()
         obs_preds = None
         obs_hand_preds = None
         obs_targets = None
