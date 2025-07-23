@@ -255,8 +255,8 @@ def main():
     avg_reward = torch.tensor(evaluate_policy(
         eva, 
         env,
-        cfg['save_path']+'success_rate.txt', 
-        cfg['save_path']+'result.txt', 
+        cfg['save_path']+f'success_rate_{cfg["load_epoch"]}.txt', 
+        cfg['save_path']+f'result_{cfg["load_epoch"]}.txt', 
         cfg['ep_len'],
         cfg['num_sequences'],
         acc.num_processes,
