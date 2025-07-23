@@ -68,8 +68,8 @@ def train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva,
                 avg_reward = torch.tensor(evaluate_policy(
                     eva, 
                     env,
-                    cfg['save_path']+'/success_rate.txt', 
-                    cfg['save_path']+'/result.txt', 
+                    cfg['save_path']+f'/success_rate_{epoch+cfg["load_epoch"]}.txt', 
+                    cfg['save_path']+f'/result_{epoch+cfg["load_epoch"]}.txt', 
                     cfg['ep_len'],
                     cfg['num_sequences'],
                     acc.num_processes,
@@ -233,12 +233,9 @@ if __name__ == '__main__':
         cfg['action_mode'],
         cfg['act_dim'],
         start_ratio = 0,
-        end_ratio = 0.9, 
-        unseen_train = cfg['unseen_train'],
+        end_ratio = 0.9,
     )
-    if cfg['ten_percent_train']:
-        # 随机取10%的train_dataset
-        _, train_dataset = random_split(train_dataset, [0.9, 0.1])
+    train_dataset[100]
     test_dataset = LMDBdst_jpeg(
         cfg['LMDB_path'], 
         cfg['seq_len'], 

@@ -146,6 +146,7 @@ def rollout(env, eva, task_oracle, subtask, val_annotations, debug, eval_dir, su
             'pred_gripper': [],
         }
     unfinished = 0
+
     for step in range(ep_len):
         if unfinished == 0:
             output = eva.step(obs, lang_annotation)

@@ -38,6 +38,8 @@ def save_to_lmdb(output_dir, input_dir):
                 txn.put(f'rel_action_{cur_step}'.encode(), dumps(torch.from_numpy(frame['rel_actions']))) # 7
                 txn.put(f'scene_obs_{cur_step}'.encode(), dumps(torch.from_numpy(frame['scene_obs']))) # 24
                 txn.put(f'robot_obs_{cur_step}'.encode(), dumps(torch.from_numpy(frame['robot_obs']))) # 15
+                txn.put(f'depth_static_{cur_step}'.encode(), dumps(torch.from_numpy(frame['depth_static']))) # hw
+                txn.put(f'depth_gripper_{cur_step}'.encode(), dumps(torch.from_numpy(frame['depth_gripper']))) # h w
                 cur_step += 1
             txn.put(f'done_{cur_step-1}'.encode(), dumps(True))
             cur_episode += 1

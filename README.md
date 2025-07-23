@@ -14,36 +14,28 @@ Download and unzip the [CALVIN](https://github.com/mees/calvin) dataset.
 $ git clone --recurse-submodules https://github.com/mees/calvin.git
 $ export CALVIN_ROOT=$(pwd)/calvin
 $ cd $CALVIN_ROOT/dataset
-$ sh download_data.sh D | ABC | ABCD 
+$ sh download_data.sh  <ABC or ABCD> 
+$ python data/calvin2lmdb.py --input_dir <dir> # Note that modify dir for: ABC or ABCD 
 ```
 
+### 2.1 Pre-Processed Data
+
+- data: [BaiduYun](https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)
+
 ## 3. Requirement
+### 3.1 Base
 
 - Python>=3.10
 - CUDA>=12.2
 - More Detials in `requirements.txt`
-
+### 3.2 Python dependencies
 ```bash
-$ git clone --recurse-submodules https://github.com/idejie/AR-VLA
-$ export AR_ROOT=$(pwd)/AR-VLA
+$ git clone --recurse-submodules https://github.com/idejie/ar.git
+$ export AR_ROOT=$(pwd)/ar
 $ cd $AR_ROOT
 $ pip install -r requirements.txt
 ```
-
-## 4. Train
-
-```bash
-# for setting ABCD-D with DP
-bash ./scripts/train.sh  ./configs/ABCD_DP.json
-# for setting ABC-D with DP
-bash ./scripts/train.sh  ./configs/ABC_DP.json
-
-```
-
-## 5. Evaluation
-
-
-### 5.1 dependencies
+### 3.3  Calvin dependencies
 
 ```bash
 $ git clone --recurse-submodules https://github.com/mees/calvin.git
@@ -56,12 +48,27 @@ $ sudo apt-get -y install libegl1-mesa libegl1 libgl1 libosmesa6-dev  ffmpeg  pa
 $ sh install.sh
 
 ```
-### 5.2 scripts
+
+## 4. Train
+
 ```bash
-# for setting ABCD-D with DP
-bash ./scripts/eval.sh  ./configs/ABCD_DP.json
-# for setting ABC-D with DP
-bash ./scripts/eval.sh  ./configs/ABC_DP.json
+# for setting ABC-D
+ accelerate launch --config_file configs/multiple.yaml --main_process_port 0 train.py --config configs/configs_ABC.json
+
+
+# for setting ABCD-D
+ accelerate launch --config_file configs/multiple.yaml --main_process_port 0 train.py --config configs/configs_ABCD.json
+
+```
+
+## 5. Evaluation
+
+
+```bash
+# for setting ABC-D
+ accelerate launch --config_file configs/multiple.yaml --main_process_port 0 evaluate.py --config configs/configs_ABC.json
+# for setting ABCD-D
+ accelerate launch --config_file configs/multiple.yaml --main_process_port 0 evaluate.py --config configs/configs_ABCD.json
 
 ```
 
@@ -69,10 +76,13 @@ bash ./scripts/eval.sh  ./configs/ABC_DP.json
 ## 6. Results and Checkpoints
 
 
-| Task Setting| Policy | Avg Len. |Avg Len. |  Checkpoints     |
-| -------- | -------------- | -------------- | -------------- |-------------- |
-| ABCD-D | DP|      4.34      |  86.75% |    [ABCD_DP]()        | 
-| ABC-D | DP|     3.29     |     65.80%  |   [ABC_DP]()         | 
+- vit-base: [BaiduYun](https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)
+
+| Task Setting|  Avg Len. |  Checkpoints     |
+| -------- |  -------------- | -------------- |-------------- |
+| ABC-D |     3.29     |     [ABC_ckpts]( https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)         | 
+| ABCD-D |      4.34      |  [ABCD_ckpts]( https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)        | 
+
 
 ## 7. Citation
 If you find our paper or project useful, please cite our work by the following BibTeX:
