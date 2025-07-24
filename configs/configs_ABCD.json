@@ -5,7 +5,7 @@
   "pretrained_ckpt_path": "outputs/ABCD_D/pretrained.pth",
   "ten_percent_train": false,
   "unseen_train": false,
-  "load_epoch": 57,
+  "load_epoch": 999,
   "save_epochs": 1,
   "num_epochs": 100,
   "num_sequences": 1000,

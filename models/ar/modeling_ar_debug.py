@@ -22,11 +22,14 @@ import sys
 sys.path.append('third_party/flamingo-pytorch')
 from flamingo_pytorch import PerceiverResampler
 import einops
-
+from .vit_wrapper import FiLMedPrismaticVisionBackbone
+from transformers import AutoModel, AutoTokenizer
 from transformers import GPT2Model
 from models.ar.vision_transformer import Block
 from models.ar.transformer_utils import get_2d_sincos_pos_embed
 from torch import Tensor
+import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 class TemporalEnsembler:
     def __init__(self, temporal_ensemble_coeff: float, chunk_size: int) -> None:
@@ -168,7 +171,15 @@ class AR(nn.Module):
             dim_head=resampler_params['dim_head'],
             heads=resampler_params['heads'],
             num_latents=self.n_patch_latents,
-            num_media_embeds=resampler_params['num_media_embeds'])        
+            num_media_embeds=resampler_params['num_media_embeds'])  
+        
+        self.perceiver_resampler_dino = PerceiverResampler(
+            dim=768,
+            depth=resampler_params['depth'],
+            dim_head=resampler_params['dim_head'],
+            heads=resampler_params['heads'],
+            num_latents=self.n_patch_latents,
+            num_media_embeds=resampler_params['num_media_embeds'])  
 
         # CLIP for language encoding
         self.model_clip = model_clip
@@ -181,6 +192,7 @@ class AR(nn.Module):
         if frozen_visual:
             for _, param in self.model_mae.named_parameters():
                 param.requires_grad = False
+        
         
         self.patch_size = patch_size
         self.image_size = rgb_shape
@@ -199,10 +211,13 @@ class AR(nn.Module):
         if 'fwd_pred_hand' in training_target:
             self.fwd_pred_hand = True
         if not self.novel:
-            self.dinov2_vitb14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
-            # freeze dinov2_vitb14
-            for param in self.dinov2_vitb14.parameters():
+            if os.path.exists('ckpts/dinov2-base'):
+                self.dino = AutoModel.from_pretrained('ckpts/dinov2-base',device_map='cpu')
+            else:
+                self.dino = AutoModel.from_pretrained('facebook/dinov2-base',device_map='cpu')
+            for param in self.dino.parameters():
                 param.requires_grad = False
+            self.dino = FiLMedPrismaticVisionBackbone(self.dino)
 
         
         self.without_norm_pixel_loss = without_norm_pixel_loss
@@ -225,7 +240,8 @@ class AR(nn.Module):
         self.embed_dino_hand_img = torch.nn.Linear(self.img_feat_dim, hidden_size)
         self.embed_hand_patch = torch.nn.Linear(self.patch_feat_dim, hidden_size) 
         self.embed_patch = torch.nn.Linear(self.patch_feat_dim, hidden_size)
-
+        self.embed_dino_patch = torch.nn.Linear(self.patch_feat_dim, hidden_size)
+        self.embed_dino_hand_patch = torch.nn.Linear(self.patch_feat_dim, hidden_size)
         # Layer norm
         self.embed_ln = nn.LayerNorm(hidden_size)
 
@@ -297,7 +313,8 @@ class AR(nn.Module):
     
         # Get obs and patch feature from MAE
         obs_embeddings, patch_embeddings = self.model_mae(
-            rgb.view(batch_size*sequence_length, c, h, w))  # (b * t, img_feat_dim), (b * t, n_patches, patch_feat_dim)
+            rgb.view(batch_size*sequence_length, c, h, w),
+            )  # (b * t, img_feat_dim), (b * t, n_patches, patch_feat_dim)
         obs_embeddings = obs_embeddings.view(batch_size, sequence_length, -1)  # (b, t, img_feat_dim)
         if self.use_hand_rgb:
             hand_obs_embeddings, hand_patch_embeddings = self.model_mae(
@@ -495,7 +512,6 @@ class AR(nn.Module):
                 state, 
                 language, 
                 attention_mask)
-        
         obs_preds = None
         obs_hand_preds = None
         obs_targets = None
@@ -527,18 +543,24 @@ class AR(nn.Module):
         # Get obs and patch feature from MAE
         # B*chunk_size, 768;B*chunk_size, 196, 768 
         obs_embeddings, patch_embeddings = self.model_mae(
-            rgb.view(batch_size*sequence_length, c, h, w))  # (b * t, img_feat_dim), (b * t, n_patches, patch_feat_dim)
+            rgb.view(batch_size*sequence_length, c, h, w)
+            )  # (b * t, img_feat_dim), (b * t, n_patches, patch_feat_dim)
         # B, chunk_size, 768
         obs_embeddings = obs_embeddings.view(batch_size, sequence_length, -1)  # (b, t, img_feat_dim)
        
         B,T,C,H,W = rgb.shape
-        dino_rgb = self.dinov2_vitb14(rgb.reshape(B*T, C, H, W))
-        dino_rgb = einops.rearrange(dino_rgb, '(b t) c-> b t c', b=B, t=T)
+        dino_out = self.dino(pixel_values=rgb.reshape(B*T, C, H, W), language_embeddings=lang_embeddings.view(B, 1, -1))
+        dino_embeddings = dino_out.pooler_output
+        dino_patch_embeddings = dino_out.last_hidden_state
+        n_dino_patches = dino_patch_embeddings.shape[1]
+        dino_embeddings = einops.rearrange(dino_embeddings, '(b t) c-> b t  c', b=B, t=T)
+        n_dino_embeddings = 1
          # retrieval top-K human motion with lang_embeddings+state_embeddings
         if self.retrieval_topk > 0 and human_vision_embedding is not None:
             # extract motion features
             # resize rgb to 224x224
-            motion_features = self.dinov2_vitb14(rgb.reshape(-1, c, 518, 518))
+            # todo: clean this part
+            motion_features = self.dino(pixel_values=rgb.reshape(-1, c, H, W), language_embeddings=lang_embeddings.view(B, 1, -1)).pooler_output
             motion_features = motion_features.view(batch_size, sequence_length, -1)
             motion_features = motion_features.mean(dim=1)
             motion_features = motion_features.unsqueeze(1)
@@ -571,10 +593,17 @@ class AR(nn.Module):
             # B*chunk_size, 768;B*chunk_size, 196, 768
             hand_obs_embeddings, hand_patch_embeddings = self.model_mae(
                 hand_rgb.view(batch_size*sequence_length, c, h, w))
-            dino_hand = self.dinov2_vitb14(hand_rgb.reshape(B*T, C, H, W))
-            dino_hand = einops.rearrange(dino_hand, '(b t) c-> b t c', b=B, t=T)
+            dino_hand_output = self.dino(pixel_values=hand_rgb.reshape(B*T, C, H, W), language_embeddings=lang_embeddings.view(B, 1, -1))
+            dino_hand_embeddings = dino_hand_output.pooler_output
+            dino_hand_patch_embeddings = dino_hand_output.last_hidden_state
+            # dino_hand_patches = einops.rearrange(dino_hand_patches, '(b t) n c-> b t n c', b=B, t=T)
+            n_dino_hand_patches = dino_hand_patch_embeddings.shape[1]
+            n_dino_hand_embeddings = 1
+            # dino_hand_embeddings = dino_hand_embeddings.view(batch_size, sequence_length, -1)  # (b, t, img_feat_dim)
+            # dino_hand_patches = dino_hand_patches.view(batch_size, sequence_length, -1)  # (b, t, img_feat_dim)
             # B, chunk_size, 768
             hand_obs_embeddings = hand_obs_embeddings.view(batch_size, sequence_length, -1)  # (b, t, img_feat_dim)
+            dino_hand_embeddings = dino_hand_embeddings.view(batch_size, sequence_length, -1)  # (b, t, img_feat_dim)
         # pixel_level target
         if self.fwd_pred:
             p = self.patch_size # 16
@@ -599,25 +628,39 @@ class AR(nn.Module):
                 ) / (obs_hand_targets.var(dim=-1, unbiased=True, keepdim=True).sqrt() + 1e-6)            
 
         # Use resampler to process patch embeddings: main obs
+
         patch_embeddings = patch_embeddings.unsqueeze(1)  # (b * t, 1, n_patches, patch_feat_dim)
         patch_embeddings = self.perceiver_resampler(patch_embeddings)  # (b * t, 1, n_patch_latents, patch_feat_dim)
         patch_embeddings = patch_embeddings.squeeze(1)  # (b * t, n_patch_latents, patch_feat_dim)
         patch_embeddings = patch_embeddings.view(batch_size, sequence_length, self.n_patch_latents, self.patch_feat_dim)  # (b, t, n_patch_latents, patch_feat_dim)
+        
+        dino_patch_embeddings = dino_patch_embeddings.unsqueeze(1)
+        dino_patch_embeddings = self.perceiver_resampler_dino(dino_patch_embeddings)
+        dino_patch_embeddings = dino_patch_embeddings.squeeze(1)
+        dino_patch_embeddings = dino_patch_embeddings.view(batch_size, sequence_length, self.n_patch_latents, -1)  # (b, t, n_patch_latents, patch_feat_dim)
+
+        
+        
         if self.use_hand_rgb: # hand obs
             hand_patch_embeddings = hand_patch_embeddings.unsqueeze(1)
             hand_patch_embeddings = self.perceiver_resampler(hand_patch_embeddings)
             hand_patch_embeddings = hand_patch_embeddings.squeeze(1)
             hand_patch_embeddings = hand_patch_embeddings.view(batch_size, sequence_length, self.n_patch_latents, self.patch_feat_dim)  # (b, t, n_patch_latents, patch_feat_dim)
+            dino_hand_patch_embeddings = dino_hand_patch_embeddings.unsqueeze(1)
+            dino_hand_patch_embeddings = self.perceiver_resampler_dino(dino_hand_patch_embeddings)
+            dino_hand_patch_embeddings = dino_hand_patch_embeddings.squeeze(1)
+            dino_hand_patch_embeddings = dino_hand_patch_embeddings.view(batch_size, sequence_length, self.n_patch_latents, -1)  # (b, t, n_patch_latents, patch_feat_dim)
         
         # Embed images and patches
         obs_embeddings = self.embed_img(obs_embeddings.float())  # (b, t, h)
-        dino_obs_embeddings = self.embed_dino_img(dino_rgb.float())  # (b, t, h)
+        dino_obs_embeddings = self.embed_dino_img(dino_embeddings.float())  # (b, t, h)
         patch_embeddings = self.embed_patch(patch_embeddings.float())  # (b, t, n_patch_latents, h)
+        dino_patch_embeddings = self.embed_dino_patch(dino_patch_embeddings.float())  # (b, t, n_dino_patches, h)
         if self.use_hand_rgb:
             hand_obs_embeddings = self.embed_hand_img(hand_obs_embeddings.float())  # (b, t, h)
-            dino_hand_obs_embeddings = self.embed_dino_hand_img(dino_hand.float())  # (b, t, h)
+            dino_hand_obs_embeddings = self.embed_dino_hand_img(dino_hand_embeddings.float())  # (b, t, h)
             hand_patch_embeddings = self.embed_hand_patch(hand_patch_embeddings.float())  # (b, t, n_patch_latents, h)
-        
+            dino_hand_patch_embeddings = self.embed_dino_hand_patch(dino_hand_patch_embeddings.float())  # (b, t, n_dino_patches, h)
         # Add timestep embeddings
         # chunk_size, 384
         time_embeddings = self.embed_timestep.weight  # (l, h)
@@ -626,10 +669,12 @@ class AR(nn.Module):
         patch_embeddings = patch_embeddings + time_embeddings.view(sequence_length, 1, self.hidden_size)
         obs_embeddings = obs_embeddings + time_embeddings
         dino_obs_embeddings = dino_obs_embeddings + time_embeddings
+        
         if self.use_hand_rgb:
-            hand_obs_embeddings = hand_obs_embeddings + time_embeddings
-            dino_hand_obs_embeddings = dino_hand_obs_embeddings + time_embeddings
+            hand_obs_embeddings = hand_obs_embeddings + time_embeddings # b, t, n,h
+            dino_hand_obs_embeddings = dino_hand_obs_embeddings + time_embeddings # b, t, n, h
             hand_patch_embeddings = hand_patch_embeddings + time_embeddings.view(sequence_length, 1, self.hidden_size)
+            dino_hand_patch_embeddings = dino_hand_patch_embeddings + time_embeddings.view(sequence_length, 1, self.hidden_size)
 
         # Format sequence: lang, state, patch, obs, hand_patch, hand_obs, [ACT], [OBS], [OBS_HAND]
         lang_embeddings = lang_embeddings.view(batch_size, sequence_length, 1, self.hidden_size)
@@ -641,7 +686,8 @@ class AR(nn.Module):
                  state_embeddings, 
                  patch_embeddings, 
                  obs_embeddings,
-                 dino_obs_embeddings), dim=2)  # (b, t, n_tokens, h)
+                 dino_obs_embeddings,
+                 dino_patch_embeddings), dim=2)  # (b, t, n_tokens, h)
         if self.use_hand_rgb:
             hand_obs_embeddings = hand_obs_embeddings.view(batch_size, sequence_length, 1, self.hidden_size)
             dino_hand_obs_embeddings = dino_hand_obs_embeddings.view(batch_size, sequence_length, 1, self.hidden_size)
@@ -649,7 +695,8 @@ class AR(nn.Module):
                 (stacked_inputs,
                  hand_patch_embeddings, 
                  hand_obs_embeddings,
-                 dino_hand_obs_embeddings), dim=2)  # (b, t, n_tokens, h)
+                 dino_hand_obs_embeddings,
+                 dino_hand_patch_embeddings), dim=2)  # (b, t, n_tokens, h)
         if self.act_pred:
             # 1, 384
             action_queries = self.action_queries.weight  # (1, h)
@@ -672,48 +719,65 @@ class AR(nn.Module):
         n_state_tokens = 1
         n_patch_tokens = self.n_patch_latents # 9
         n_obs_tokens = 1
+        n_dino_patch_tokens = self.n_patch_latents # 9
         n_dino_obs_tokens = 1
-        n_hand_patch_tokens = self.n_patch_latents
+        
+        n_hand_patch_tokens = self.n_patch_latents # 9
         n_hand_obs_tokens = 1
         n_dino_hand_obs_tokens = 1
+        n_dino_hand_patch_tokens = self.n_patch_latents # 9
         
-       
-        n_tokens = n_lang_tokens + n_state_tokens + n_patch_tokens + n_obs_tokens + n_dino_obs_tokens
+
+        n_tokens = n_lang_tokens + n_state_tokens + n_patch_tokens + n_obs_tokens + n_dino_patch_tokens + n_dino_obs_tokens
+        # print('n_tokens',n_tokens)
         if self.use_hand_rgb:
-            n_tokens += (n_hand_obs_tokens + n_dino_hand_obs_tokens)
-            n_tokens += n_hand_patch_tokens
+            n_tokens += (n_hand_obs_tokens +  n_dino_hand_obs_tokens)
+            n_tokens += (n_hand_patch_tokens + n_dino_hand_patch_tokens)
+            # print('use_hand_rgb',n_tokens)
+        # else:
+        #     print('not use_hand_rgb',n_tokens)
         n_act_pred_tokens = self.chunk_size
         if self.act_pred:
             act_query_token_start_i = n_tokens
             n_tokens += self.chunk_size
+        #     print('act_pred',n_tokens)
+        # else:
+        #     print('not act_pred',n_tokens)
         if self.fwd_pred:
             obs_query_token_start_i = n_tokens
             n_tokens += (n_patch_tokens + n_obs_tokens)
-        if self.fwd_pred_hand:
-            obs_hand_query_token_start_i = n_tokens
-            n_tokens += (n_patch_tokens + n_obs_tokens) 
-
+            # print('fwd_pred',n_tokens)
+            if self.fwd_pred_hand:
+                obs_hand_query_token_start_i = n_tokens
+                n_tokens += (n_patch_tokens + n_obs_tokens) 
+                # print('fwd_pred_hand',n_tokens)
         # Layer norm
         stacked_inputs = stacked_inputs.reshape(batch_size, n_tokens * sequence_length, self.hidden_size)
         stacked_inputs = self.embed_ln(stacked_inputs)
 
         # Attention mask
         stacked_attention_mask = attention_mask.view(batch_size, sequence_length, 1)
+        # print('stacked_attention_mask',stacked_attention_mask.shape)
         if self.use_hand_rgb:
             stacked_attention_mask = stacked_attention_mask.repeat(
-                1, 1, n_lang_tokens + n_state_tokens + n_hand_patch_tokens + n_hand_obs_tokens + n_patch_tokens + n_obs_tokens + n_dino_obs_tokens + n_dino_hand_obs_tokens)
+                1, 1, n_lang_tokens + n_state_tokens + n_hand_patch_tokens + n_hand_obs_tokens + n_patch_tokens + n_obs_tokens + n_dino_hand_patch_tokens + n_dino_hand_obs_tokens + n_dino_patch_tokens + n_dino_obs_tokens)
+            # print('use_hand_rgb',stacked_attention_mask.shape)
         else:
             stacked_attention_mask = stacked_attention_mask.repeat(
-                1, 1, n_lang_tokens + n_state_tokens + n_patch_tokens + n_obs_tokens + n_dino_obs_tokens)
+                1, 1, n_lang_tokens + n_state_tokens + n_patch_tokens + n_obs_tokens + n_dino_obs_tokens + n_dino_patch_tokens)
+            # print('not use_hand_rgb',stacked_attention_mask.shape)
         if self.act_pred:
             act_query_attention_mask = torch.zeros((batch_size, sequence_length, n_act_pred_tokens), dtype=torch.long, device=stacked_inputs.device)
             stacked_attention_mask = torch.cat((stacked_attention_mask, act_query_attention_mask), dim=2)
+            # print('act_pred',stacked_attention_mask.shape)
         if self.fwd_pred:
             obs_query_attention_mask = torch.zeros((batch_size, sequence_length, n_patch_tokens + n_obs_tokens), dtype=torch.long, device=stacked_inputs.device)
             stacked_attention_mask = torch.cat((stacked_attention_mask, obs_query_attention_mask), dim=2)
+            # print('fwd_pred',stacked_attention_mask.shape)
             if self.fwd_pred_hand:
                 obs_hand_query_attention_mask = torch.zeros((batch_size, sequence_length, n_patch_tokens + n_obs_tokens), dtype=torch.long, device=stacked_inputs.device)
                 stacked_attention_mask = torch.cat((stacked_attention_mask, obs_hand_query_attention_mask), dim=2)
+                # print('fwd_pred_hand',stacked_attention_mask.shape)
         stacked_attention_mask = stacked_attention_mask.reshape(batch_size, n_tokens * sequence_length)
         # stacked_attention_mask : batch_size, 520
         # GPT forward pass

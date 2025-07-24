@@ -208,6 +208,7 @@ def train(acc, train_prefetcher, test_prefetcher, preprocessor, model, env, eva,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='configs/configs.json')
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     cfg = json.load(open(args.config))
     # The timeout here is 3600s to wait for other processes to finish the simulation
@@ -268,6 +269,8 @@ if __name__ == '__main__':
     
     checkpoint = torch.load(cfg['mae_ckpt'])
     model_mae.load_state_dict(checkpoint['model'], strict=False)
+    if not cfg['novel']:
+        from models.ar.modeling_ar_debug import AR 
     model = AR(
         model_clip,
         model_mae,

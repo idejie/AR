@@ -6,7 +6,10 @@ from typing import Any, Callable, Sequence, Tuple, Union
 import torch
 import torch.nn as nn
 from timm.models.vision_transformer import VisionTransformer
-
+from typing import Callable, Optional, Union
+from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
+from transformers.models.dinov2.modeling_dinov2 import Dinov2Model,Dinov2Encoder,Dinov2Layer
+from einops import rearrange,repeat
 
 class FiLMedVisionTransformerBlock(nn.Module):
     """
@@ -53,7 +56,12 @@ class FiLMedVisionTransformerBlock(nn.Module):
         self.scale = nn.Linear(llm_dim, vision_dim)
         self.shift = nn.Linear(llm_dim, vision_dim)
 
-    def forward(self, x, average_language_embedding):
+    def forward(self,  
+        hidden_states: torch.Tensor,
+        language_embeddings: torch.Tensor,
+        head_mask: Optional[torch.Tensor] = None,
+        output_attentions: bool = False,
+    ):
         """
         Overrides the vision transformer block forward pass to use FiLM.
 
@@ -62,19 +70,40 @@ class FiLMedVisionTransformerBlock(nn.Module):
             average_language_embedding (torch.Tensor): Average language embedding for task, (batch_size, llm_dim).
         """
         # Project average language embedding to visual embedding space to get gamma and beta
-        gamma = self.scale(average_language_embedding)  # (batch_size, vision_dim)
-        beta = self.shift(average_language_embedding)  # (batch_size, vision_dim)
+        gamma = self.scale(language_embeddings)  # (batch_size, vision_dim)
+        beta = self.shift(language_embeddings)  # (batch_size, vision_dim)
 
-        # Pass visual inputs through attention portion of original block
-        x = x + self.block.drop_path1(self.block.ls1(self.block.attn(self.block.norm1(x))))
+        self_attention_outputs = self.block.attention(
+            self.block.norm1(hidden_states),  # in Dinov2, layernorm is applied before self-attention
+            head_mask,
+            output_attentions=output_attentions,
+        )
+        attention_output = self_attention_outputs[0]
 
+        attention_output = self.block.layer_scale1(attention_output)
+        outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
+
+        # first residual connection
+        hidden_states = self.block.drop_path(attention_output) + hidden_states
         # Modulate intermediate visual representations via FiLM
-        x = x * (1 + gamma.view(gamma.shape[0], 1, gamma.shape[1])) + beta.view(beta.shape[0], 1, beta.shape[1])
+        bt, n, d = hidden_states.shape
+        b = gamma.shape[0]
+        t = bt//b
+        gamma = repeat(gamma, 'b  d -> (b t)  d', t=t)
+        beta = repeat(beta, 'b  d -> (b t)  d', t=t)
+        hidden_states = hidden_states * (1 + gamma.view(-1, 1, gamma.shape[1])) + beta.view(-1, 1, beta.shape[1])
 
-        # Pass visual inputs through feedforward portion of original block
-        x = x + self.block.drop_path2(self.block.ls2(self.block.mlp(self.block.norm2(x))))
+        # in Dinov2, layernorm is also applied after self-attention
+        layer_output = self.block.norm2(hidden_states)
+        layer_output = self.block.mlp(layer_output)
+        layer_output = self.block.layer_scale2(layer_output)
 
-        return x
+        # second residual connection
+        layer_output = self.block.drop_path(layer_output) + hidden_states
+
+        outputs = (layer_output,) + outputs
+
+        return outputs
 
 
 class NullVisionTransformerBlockWrapper(nn.Module):
@@ -105,67 +134,142 @@ def unpack_tuple(fn: Callable[[Any], Tuple[Any]]) -> Callable[[Any], Any]:
     return wrapper
 
 
-class FiLMedVisionTransformer(VisionTransformer):
+
+# def Dinov2Layer_forward(
+#     self,
+#         hidden_states: torch.Tensor,
+#         language_embeddings: torch.Tensor,
+#         head_mask: Optional[torch.Tensor] = None,
+#         output_attentions: bool = False,
+#     ) -> Union[tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor]]:
+#         self_attention_outputs = self.attention(
+#             self.norm1(hidden_states),  # in Dinov2, layernorm is applied before self-attention
+#             head_mask,
+#             output_attentions=output_attentions,
+#         )
+#         attention_output = self_attention_outputs[0]
+
+#         attention_output = self.layer_scale1(attention_output)
+#         outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
+
+#         # first residual connection
+#         hidden_states = self.drop_path(attention_output) + hidden_states
+
+#         # in Dinov2, layernorm is also applied after self-attention
+#         layer_output = self.norm2(hidden_states)
+#         layer_output = self.mlp(layer_output)
+#         layer_output = self.layer_scale2(layer_output)
+
+#         # second residual connection
+#         layer_output = self.drop_path(layer_output) + hidden_states
+
+#         outputs = (layer_output,) + outputs
+
+#         return outputs
+    
+def Dinov2Encoder_forward(
+    self,
+        hidden_states: torch.Tensor,
+        language_embeddings: torch.Tensor,
+        head_mask: Optional[torch.Tensor] = None,
+        output_attentions: bool = False,
+        output_hidden_states: bool = False,
+        return_dict: bool = True,
+    ) -> Union[tuple, BaseModelOutput]:
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attentions = () if output_attentions else None
+        
+        for i, layer_module in enumerate(self.layer):
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            layer_head_mask = head_mask[i] if head_mask is not None else None
+
+            layer_outputs = layer_module(hidden_states, language_embeddings, layer_head_mask, output_attentions)
+
+            hidden_states = layer_outputs[0]
+
+            if output_attentions:
+                all_self_attentions = all_self_attentions + (layer_outputs[1],)
+
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if not return_dict:
+            return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+        return BaseModelOutput(
+            last_hidden_state=hidden_states,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attentions,
+        )
+
+
+Dinov2Encoder.forward = Dinov2Encoder_forward
+# Dinov2Layer.forward = Dinov2Layer_forward
+
+
+class FiLMedVisionTransformer(Dinov2Model):
     """
     Wrapper for timm.models.vision_transformer.VisionTransformer that overrides functions to enable infusing language
     embeddings into visual embeddings via FiLM.
     """
 
-    def _intermediate_layers(
-        self,
-        x: torch.Tensor,
-        language_embeddings: torch.Tensor,
-        n: Union[int, Sequence] = 1,
-    ):
-        """
-        Copy of timm.models.vision_transformer.VisionTransformer._intermediate_layers() with modifications
-        to take in language embeddings as additional input.
-        """
-        outputs, num_blocks = [], len(self.blocks)
-        take_indices = set(range(num_blocks - n, num_blocks) if isinstance(n, int) else n)
-
-        # forward pass
-        x = self.patch_embed(x)
-        x = self._pos_embed(x)
-        x = self.patch_drop(x)
-        x = self.norm_pre(x)
-        for i, blk in enumerate(self.blocks):
-            x = blk(x, language_embeddings)  # Modified to receive language_embeddings
-            if i in take_indices:
-                outputs.append(x)
-
-        return outputs
-
     def get_intermediate_layers(
         self,
-        x: torch.Tensor,
-        language_embeddings: torch.Tensor,
+        pixel_values: Optional[torch.Tensor] = None,
+        language_embeddings: Optional[torch.Tensor] = None,
+        bool_masked_pos: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
         n: Union[int, Sequence] = 1,
-        reshape: bool = False,
-        return_prefix_tokens: bool = False,
-        norm: bool = False,
-    ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]]]:
+    ) -> Union[tuple, BaseModelOutputWithPooling]:
+        r"""
+        bool_masked_pos (`torch.BoolTensor` of shape `(batch_size, sequence_length)`):
+            Boolean masked positions. Indicates which patches are masked (1) and which aren't (0). Only relevant for
+            pre-training.
         """
-        Copy of timm.models.vision_transformer.VisionTransformer.get_intermediate_layers() with modifications
-        to allow language embeddings as additional input.
-        """
-        # take last n blocks if n is an int, if in is a sequence, select by matching indices
-        outputs = self._intermediate_layers(x, language_embeddings, n)
-        if norm:
-            outputs = [self.norm(out) for out in outputs]
-        prefix_tokens = [out[:, 0 : self.num_prefix_tokens] for out in outputs]
-        outputs = [out[:, self.num_prefix_tokens :] for out in outputs]
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if reshape:
-            grid_size = self.patch_embed.grid_size
-            outputs = [
-                out.reshape(x.shape[0], grid_size[0], grid_size[1], -1).permute(0, 3, 1, 2).contiguous()
-                for out in outputs
-            ]
+        if pixel_values is None:
+            raise ValueError("You have to specify pixel_values")
 
-        if return_prefix_tokens:
-            return tuple(zip(outputs, prefix_tokens))
-        return tuple(outputs)
+        # Prepare head mask if needed
+        # 1.0 in head_mask indicate we keep the head
+        # attention_probs has shape bsz x n_heads x N x N
+        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
+        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
+        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
+
+        embedding_output = self.embeddings(pixel_values, bool_masked_pos=bool_masked_pos)
+
+        encoder_outputs = self.encoder(
+            embedding_output,
+            language_embeddings=language_embeddings,
+            head_mask=head_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        sequence_output = encoder_outputs[0]
+        sequence_output = self.layernorm(sequence_output)
+        pooled_output = sequence_output[:, 0, :]
+
+        if not return_dict:
+            head_outputs = (sequence_output, pooled_output)
+            return head_outputs + encoder_outputs[1:]
+
+        return BaseModelOutputWithPooling(
+            last_hidden_state=sequence_output,
+            pooler_output=pooled_output,
+            hidden_states=encoder_outputs.hidden_states,
+            attentions=encoder_outputs.attentions,
+        )
 
 
 class FiLMedPrismaticVisionBackbone(nn.Module):
@@ -179,7 +283,9 @@ class FiLMedPrismaticVisionBackbone(nn.Module):
     def __init__(
         self,
         vision_backbone,
-        llm_dim: int = 4096,  # 4096 for Llama-2 7B
+        vit_dim: int = 768,
+        llm_dim: int = 384,
+        model_type: str = 'dinov2'
     ) -> None:
         """
         Initializes FiLM wrapper.
@@ -190,12 +296,16 @@ class FiLMedPrismaticVisionBackbone(nn.Module):
         """
         super().__init__()
         self.vision_backbone = vision_backbone
+        self.vit_dim = vit_dim
         self.llm_dim = llm_dim
-
+        self.model_type = model_type
         # Wrap vision transformers
-        self._wrap_vit(self.vision_backbone.featurizer)  # SigLIP
-        if self.vision_backbone.use_fused_vision_backbone:
-            self._wrap_vit(self.vision_backbone.fused_featurizer)  # DINOv2
+        if model_type.lower() == 'siglip':
+            self._wrap_vit(self.vision_backbone.featurizer)  
+        if model_type.lower() in ['dinov2', 'mae']:
+            self._wrap_vit(self.vision_backbone)  
+        else:
+            raise ValueError(f"Invalid model type: {model_type}")
 
     def _wrap_vit(self, vit) -> None:
         """
@@ -206,15 +316,21 @@ class FiLMedPrismaticVisionBackbone(nn.Module):
         """
         # Wrap vision transformer blocks
         block_wrappers = []
-        for block in vit.blocks:
+        layers = vit.encoder.layer if self.model_type.lower() == 'dinov2' else vit.blocks
+        for block in layers:
             block_wrappers.append(
-                FiLMedVisionTransformerBlock(block=block, vision_dim=vit.num_features, llm_dim=self.llm_dim)
+                FiLMedVisionTransformerBlock(block=block, vision_dim=self.vit_dim, llm_dim=self.llm_dim)
             )
-        vit.blocks = nn.Sequential(*block_wrappers)
+        if self.model_type.lower() in ['dinov2', 'mae']:
+            vit.encoder.layer = nn.Sequential(*block_wrappers)
+        else:
+            vit.blocks = nn.Sequential(*block_wrappers)
 
         # Wrap vision transformer with new class that overrides functions used for forward pass
+        # vit.__class__ = FiLMedVisionTransformer
+        # vit.forward = unpack_tuple(partial(dinov2_forward, n={len(layers) - 2}))
         vit.__class__ = FiLMedVisionTransformer
-        vit.forward = unpack_tuple(partial(vit.get_intermediate_layers, n={len(vit.blocks) - 2}))
+        vit.forward = unpack_tuple(partial(vit.get_intermediate_layers, n={len(layers) - 2}))
 
     def get_num_patches(self) -> int:
         """Returns the number of vision patches output by the vision backbone."""
@@ -240,37 +356,9 @@ class FiLMedPrismaticVisionBackbone(nn.Module):
         """
         # For FiLM: Average the language embeddings of the task description
         average_language_embedding = language_embeddings.mean(dim=1)
+        # Split `pixel_values :: [bsz,  3, resolution, resolution]` =>> featurize =>> channel stack
+        patches = self.vision_backbone(pixel_values=pixel_values, language_embeddings=average_language_embedding)
 
-        if self.get_num_images_in_input() == 1:
-            if not self.vision_backbone.use_fused_vision_backbone:
-                return self.vision_backbone.featurizer(pixel_values, average_language_embedding)
+        return patches
 
-            # Split `pixel_values :: [bsz, 2 * 3, resolution, resolution]` =>> featurize =>> channel stack
-            img, img_fused = torch.split(pixel_values, [3, 3], dim=1)
-            patches = self.vision_backbone.featurizer(img, average_language_embedding)
-            patches_fused = self.vision_backbone.fused_featurizer(img_fused, average_language_embedding)
-
-            return torch.cat([patches, patches_fused], dim=2)
-
-        else:
-            assert self.vision_backbone.use_fused_vision_backbone, "Multi-image inputs require using fused backbone!"
-
-            # Split `pixel_values` into individual images (each with 6 channels: 3 for SigLIP + 3 for DINOv2)
-            images = torch.split(pixel_values, [6] * self.get_num_images_in_input(), dim=1)
-
-            # Process each image and collect patches
-            all_patches = []
-            for img in images:
-                # Split each image further into two stacks of channels (each with 3 channels)
-                img_regular, img_fused = torch.split(img, [3, 3], dim=1)
-
-                # Get patches from both SigLIP and DINOv2 vision transformers
-                patches = self.vision_backbone.featurizer(img_regular, average_language_embedding)
-                patches_fused = self.vision_backbone.fused_featurizer(img_fused, average_language_embedding)
-
-                # Concatenate SigLIP and DINOv2 patches along the hidden dimension
-                combined_patches = torch.cat([patches, patches_fused], dim=2)
-                all_patches.append(combined_patches)
-
-            # Concatenate all patches along the patch dimension
-            return torch.cat(all_patches, dim=1)
+    
