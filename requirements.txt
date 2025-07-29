@@ -1,0 +1,12 @@
+torch
+torchvision
+packaging==21.3
+setuptools==57.5.0
+flamingo_pytorch
+tensorboard
+matplotlib
+einops 
+lmdb 
+transformers
+accelerate
+git+https://github.com/openai/CLIP.git
