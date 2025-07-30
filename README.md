@@ -75,6 +75,7 @@ $ sh install.sh
 
 | Task Setting|  Avg Len. |  Checkpoints     |
 | -------- |  -------------- |-------------- |
+| ABCD-D |     4.27     |     [ABC_ckpts]( https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)         | 
 | ABC-D |     3.29     |     [ABC_ckpts]( https://pan.baidu.com/s/17El0b3xJh8cU5129-m9AMQ?pwd=v74f)         | 
 
 
