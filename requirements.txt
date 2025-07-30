@@ -9,4 +9,5 @@ einops
 lmdb 
 transformers
 accelerate
+moviepy
 git+https://github.com/openai/CLIP.git

@@ -50,7 +50,6 @@ from calvin_agent.evaluation.utils import (
 import hydra
 import numpy as np
 from omegaconf import OmegaConf
-from pytorch_lightning import seed_everything
 from termcolor import colored
 import torch
 from tqdm.auto import tqdm
@@ -202,6 +201,8 @@ def main():
     model_mae.load_state_dict(checkpoint['model'], strict=False)
     if not cfg['novel']:
         from models.ar.modeling_ar_debug import AR 
+    else:
+        from models.ar.modeling_ar import AR
     model = AR(
         model_clip,
         model_mae,
