@@ -10,4 +10,8 @@ lmdb
 transformers
 accelerate
 moviepy
+timm
+loguru
+draccus
+moviepy==1.0.3
 git+https://github.com/openai/CLIP.git
