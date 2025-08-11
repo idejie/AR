@@ -24,7 +24,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
 
-  <title>3D Vision and Language Pretraining with Large-Scale Synthetic Data</title>
+  <title>AR-VRM: Imitating Human Motions for Visual Robot Manipulation with Analogical Reasoning</title>
   <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
   <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
   rel="stylesheet">
@@ -52,32 +52,24 @@
       <div class="container is-max-desktop">
         <div class="columns is-centered">
           <div class="column has-text-centered">
-            <h1 class="title is-1 publication-title">3D Vision and Language Pretraining with Large-Scale Synthetic Data</h1>
+            <h1 class="title is-1 publication-title">AR-VRM: Imitating Human Motions for Visual Robot Manipulation with Analogical Reasoning</h1>
             <div class="is-size-5 publication-authors">
               <!-- Paper authors -->
               <span class="author-block">
                 <a href="https://blog.idejie.com" target="_blank">Dejie Yang</a><sup>1</sup>,</span>
                 <span class="author-block">
-                  Zhu Xu<sup>1</sup>,</span>
-                  <span class="author-block">
-                   Wentao Mo<sup>1</sup>,</span>
-                   <span class="author-block">
-                    Qingchao Chen<sup>2,3</sup>,</span>
-                    <span class="author-block">
-                      Siyuan Huang<sup>4</sup>,</span>
+                  Zijing Zhao<sup>1</sup>,</span>
                 <span class="author-block">
-                  <a href="http://www.csyangliu.com/" target="_blank">Yang Liu</a><sup>1,3*</sup>
+                  <a href="http://www.csyangliu.com/" target="_blank">Yang Liu</a><sup>1,2*</sup>
                 </span>
                 
                   </div>
                   <br>
                   <div class="is-size-5 publication-authors">
                     <span class="author-block"> <sup>1</sup>Wangxuan Institute of Computer Technology, Peking University 
-                      <br> <sup>2</sup>National Institute of Health Data Science, Peking University
-                      <br> <sup>3</sup>National Key Laboratory of General Artificial Intelligence, Peking University
-                      <br> <sup>4</sup>State Key Laboratory of General Artificial Intelligence, BIGAI
+                      <br> <sup>2</sup>State Key Laboratory of General Artificial Intelligence, BIGAI
                       <br>
-                      <br>IJCAI2024</span>
+                      <br>ICCV2025</span>
                     <span class="eql-cntrb"><small><br><sup>*</sup>Corresponding Author</small></span>
                   </div>
 
@@ -85,12 +77,12 @@
                     <div class="publication-links">
                          <!-- Arxiv PDF link -->
                       <span class="link-block">
-                        <a href="https://arxiv.org/html/2407.06084v1" target="_blank"
+                        <a href="https://arxiv.org/submit/6630050/view" target="_blank"
                         class="external-link button is-normal is-rounded is-dark">
                         <span class="icon">
                           <i class="fas fa-file-pdf"></i>
                         </span>
-                        <span>Arxiv</span>
+                        <span>Arxiv(Coming Soon)</span>
                       </a>
                     </span>
 
@@ -107,7 +99,7 @@
 
                   <!-- Github link -->
                   <span class="link-block">
-                    <a href="https://github.com/idejie/3Dsyn" target="_blank"
+                    <a href="https://github.com/idejie/AR" target="_blank"
                     class="external-link button is-normal is-rounded is-dark">
                     <span class="icon">
                       <i class="fab fa-github"></i>
@@ -139,10 +131,10 @@
 <section class="hero teaser">
   <div class="container is-max-desktop">
     <div class="hero-body" style="text-align: center;">
-      <img src="static/images/teaser.png" alt="MY ALT TEXT"/>
+      <img src="static/images/teaser.png" alt="MY ALT TEXT" width="70%"/>
     
-      <h2 class="content" style="text-align: center;">
-        <b>Advantages of our proposed dataset SynVL3D.</b></h2>
+      <h2 class="content" style="text-align: left;">
+        <b>Demonstration of the differences between our framework and previous methods: </b>we propose to learn from human actions explicitly by hand keypoints with analogical reasoning.</h2>
     </div>
   </div>
 </section>
@@ -156,8 +148,8 @@
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
-            3D Vision-Language Pre-training (3D-VLP) aims to provide a pre-train model which can bridge 3D scenes with natural language, which is an impor- tant technique for embodied intelligence. How- ever, current 3D-VLP datasets are hindered by limited scene-level diversity and insufficient fine- grained annotations (only 1.2K scenes and 280K textual annotations in ScanScribe), primarily due to the labor-intensive of collecting and annotating 3D scenes. To overcome these obstacles, we con- struct SynVL3D, a comprehensive synthetic scene- text corpus with 10K indoor scenes and 1M de- scriptions at object, view, and room levels, which has the advantages of diverse scene data, rich tex- tual descriptions, multi-grained 3D-text associa- tions, and low collection cost. Utilizing the rich annotations in SynVL3D, we pre-train a simple and unified Transformer for aligning 3D and language with multi-grained pretraining tasks. Moreover, we propose a synthetic-to-real domain adaptation in downstream task fine-tuning process to address the domain shift. Through extensive experiments, we verify the effectiveness of our model design by achieving state-of-the-art performance on down- stream tasks including visual grounding, dense cap- tioning, and question answering.
-           </p>
+            Visual Robot Manipulation (VRM) aims to enable a robot to follow natural language instructions based on robot states and visual observations, and therefore requires costly multi-modal data. To compensate for the deficiency of robot data, existing approaches have employed vision-language pretraining with large-scale data. However, they either utilize web data that differs from robotic tasks, or train the model in an implicit way (e.g., predicting future frames at the pixel level), thus showing limited generalization ability under insufficient robot data. In this paper, we propose to learn from large-scale human action video datasets in an explicit way (i.e., imitating human actions from hand keypoints), introducing Visual Robot Manipulation with Analogical Reasoning (AR-VRM). To acquire action knowledge explicitly from human action videos, we propose a keypoint Vision-Language Model (VLM) pretraining scheme, enabling the VLM to learn human action knowledge and directly predict human hand keypoints. During fine-tuning on robot data, to facilitate the robotic arm in imitating the action patterns of human motions, we first retrieve human action videos that perform similar manipulation tasks and have similar historical observations , and then learn the Analogical Reasoning (AR) map between human hand keypoints and robot components. Taking advantage of focusing on action keypoints instead of irrelevant visual cues, our method achieves leading performance on the CALVIN benchmark and real-world experiments. In few-shot scenarios, our AR-VRM outperforms previous methods by large margins , underscoring the effectiveness of explicitly imitating human actions under data scarcity. 
+          </p>
         </div>
       </div>
     </div>
@@ -176,7 +168,7 @@
       <img src="static/images/frame.png" alt="MY ALT TEXT"/>
     
       <h2 class="content has-text-justified" style="text-align: center;">
-        <b>The model architecture of our SynFormer3D.</b> The multi-modal encoder includes a 3D-object encoder, text encoder, and cross-modal fusion modules. Compared to previous pre-trained models, our SynFormer3D introduces more fine-grained auxiliary pre-training tasks, which include Object Relation Prediction , Multi-level and View-aggregated Region-Word Alignment.
+        <b>The model architecture of our AR-VRM:</b> Visual Robot Manipulation with Analogical Reasoning
       </h2>
   </div>
 </section>
@@ -190,49 +182,54 @@
     <h2 class="title is-3">Results</h2>
     <div class="hero-body" style="text-align: center;">
       <h2 class="content has-text-justified">
-        <b>1.Grounding accuracy (%) on Nr3D, Sr3D and ScanRefer.</b> The best and second-best results are in bold and underlined.
+        <b>1. Comparison with previous methods on CALVIN benchmark.</b>
       </h2>
-      <img src="static/images/table2.png" alt="MY ALT TEXT" width="100%"/>
+      <img src="static/images/CALVIN.png" alt="MY ALT TEXT" width="70%"/>
     
       
     </div>
     <div class="hero-body" style="text-align: center;">
       <h2 class="content has-text-justified">
-        <b>2. Dense Captioning results on Scan2Cap dataset.</b> “C” stands for “CIDEr”, “B-4” for “BLEU-4”, “M” for “METEOR”, and “R” for
-          “ROUGE”, respectively. “@0.25” and “@0.5” represent the 3D IoU between the predicted and annotated box. The best results are in bold and underlined.
+        <b>2. Comparison with previous methods on real-world experiments.</b>
       </h2>
-      <img src="static/images/table3.png" alt="MY ALT TEXT" width="100%"/>
+      <img src="static/images/real.png" alt="MY ALT TEXT" width="40%"/>
     
       
     </div>
     <div class="hero-body" style="text-align: center;">
       <h2 class="content has-text-justified">
-        <b>3. Answer accuracy on ScanQA </b>using object proposals from Mask3D. Each entry denotes “test w/ object” and second-best results are in bold and underlined.
+        <b>3. Ablation studies.</b> We ablate the effect of different components of our AR-VRM.
       </h2>
-      <img src="static/images/table4.png" alt="MY ALT TEXT" width="100%"/>
+      <img src="static/images/ablation.png" alt="MY ALT TEXT" width="70%"/>
     
       
     </div>
-    <!-- <div class="hero-body" style="text-align: center;">
-      <h2 class="content has-text-justified" style="text-align: center;">
-        <b>4. Comparisons with other methods on 100DOH.</b> We bold the best results and underline the second best ones.
+    <div class="hero-body" style="text-align: center;">
+      <h2 class="content has-text-justified">
+        <b>4. Data-efficient results.</b>
       </h2>
-      <img src="static/images/100DOH.png" alt="MY ALT TEXT" width="50%"/> -->
+      <img src="static/images/data.png" alt="MY ALT TEXT" width="60%"/>
     
-
-      <!-- Paper poster -->
-<!-- <section class="hero is-small is-light">
-  <div class="hero-body">
-    <div class="container">
-      <h2 class="title">Slides</h2>
-
-      <iframe  src="static/pdfs/KAD.pdf" width="100%" height="550">
-          </iframe>
-        
-      </div>
+      
     </div>
-  </section> -->
-<!--End paper poster -->
+    <div class="hero-body" style="text-align: center;">
+      <h2 class="content has-text-justified">
+        <b>5. Unseen-language results.</b>
+      </h2>
+      <img src="static/images/unseen.png" alt="MY ALT TEXT" width="70%"/>
+    
+      
+    </div>
+
+    <div class="hero-body" style="text-align: center;">
+      <h2 class="content has-text-justified">
+        <b>6. Qualitative retrieval results.</b>
+      </h2>
+      <img src="static/images/retrieval.png" alt="MY ALT TEXT" width="70%"/>
+    
+      
+    </div>
+ 
       
     </div>
   </div>
@@ -250,13 +247,11 @@
   <section class="section" id="BibTeX">
     <div class="container is-max-desktop content">
       <h2 class="title">BibTeX</h2>
-      <pre><code>@inproceedings{3DSyn,
-        title     = {3D Vision and Language Pretraining with Large-Scale Synthetic Data},
-        author    = {Dejie Yang, Zhu Xu, Wentao Mo, Qingchao Chen, Siyuan Huang, Yang Liu},
-        booktitle = {Proceedings of the Thirty-Second International Joint Conference on
-                     Artificial Intelligence, {IJCAI-24}},
-        publisher = {International Joint Conferences on Artificial Intelligence Organization},
-        year      = {2024},
+      <pre><code>@inproceedings{arvrm,
+        title     = {AR-VRM: Imitating Human Motions for Visual Robot Manipulation with Analogical Reasoning},
+        author    = {Dejie Yang, Zijing Zhao, Yang Liu},
+        booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision, {ICCV-25}},
+        year      = {2025},
       }
       </code></pre>
     </div>
