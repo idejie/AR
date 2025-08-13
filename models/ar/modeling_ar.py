@@ -203,6 +203,7 @@ class AR(nn.Module):
             # freeze dinov2_vitb14
             for param in self.dinov2_vitb14.parameters():
                 param.requires_grad = False
+            self.ego_hand = self.dinov2_vitb14
 
         
         self.without_norm_pixel_loss = without_norm_pixel_loss
