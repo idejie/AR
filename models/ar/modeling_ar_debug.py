@@ -218,7 +218,7 @@ class AR(nn.Module):
             for param in self.dino.parameters():
                 param.requires_grad = False
             self.dino = FiLMedPrismaticVisionBackbone(self.dino)
-
+            self.ego_hand = self.dino
         
         self.without_norm_pixel_loss = without_norm_pixel_loss
 
