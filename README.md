@@ -1,6 +1,10 @@
 # AR-VRM: Imitating Human Motions for Visual Robot Manipulation with Analogical Reasoning
 
 [Arxiv Paper](https://arxiv.org/abs/2508.07626)
+
+[Project Page]()https://idejie.com/AR/
+
+[Youtube Video](https://www.youtube.com/watch?v=lOH6b0LytkI)
 > By Dejie Yang, Zijing Zhao, Yang Liu $^*$
 >
 > Accepted By ICCV 2025
